@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Scrubbl</title>
+    <script
+            src="https://code.jquery.com/jquery-3.5.1.js"
+            integrity="sha256-QWo7LDvxbWT2tbbQ97B53yJnYU3WhH/C8ycbRAkjPDc="
+            crossorigin="anonymous"></script>
+
+    <script>
+        fetch('http://localhost:8080/getRooms/', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then(response => response.json())
+            .then(data => {
+                for(var ms in data){
+                    var row = document.getElementById("rooms").insertRow();
+                    var cell1 = row.insertCell(0);
+                    cell1.innerHTML = data[ms];
+                }
+            });
+
+        $(document).ready(function () {
+            $("#startButton").click(function () {
+                var name = $("#nameInput").val();
+                var roomId = $("#roomIdInput").val();
+                var time = $("#time").val()
+                var rounds = $("#rounds").val()
+                var lang = $("#lang").val()
+                var category = $("#category").val()
+                var custom = $("#wordsInput").val()
+
+
+                //alert("Key " + key + " was added");
+
+                if(roomId === ""){
+                    $.ajax({
+                        type: "POST",
+                        url: "/createRoom",
+                        data: JSON.stringify( { "name": name, "time": time, "rounds": rounds, "lang": lang, "category": category, "custom": custom } ),
+                        complete: function (jqXHR, textStatus) {
+                            console.log(jqXHR.responseText);
+                            window.location.replace("http://localhost:8080/draw/?roomId=" + jqXHR.responseText + "&name=" + name);
+                        },
+                        dataType: "text",
+                        contentType: 'application/json; charset=UTF-8'
+                    });
+                }else{
+                    $.ajax({
+                        type: "POST",
+                        url: "/" + roomId,
+                        data: name,
+                        complete: function (jqXHR, textStatus) {
+                        },
+                        dataType: "text",
+                        contentType: 'application/json; charset=UTF-8'
+                    });
+                    window.location.replace("http://localhost:8080/draw/?roomId=" + roomId + "&name=" + name);
+                }
+
+
+            })
+        })
+    </script>
+
+</head>
+<body>
+<h1>Scrubbl</h1>
+------------------------------------------ <br/>
+RoomID <input id="roomIdInput"> <br/>
+Username <input id="nameInput"> <br/>
+<button id="startButton">Start</button>
+<br>
+<h4>Room Details</h4>
+Time for drawing(seconds) <input type="number" id="time" name="time" min="10" max="100" value="50"> <br/>
+<label for="rounds">Number of rounds</label>
+<select name="rounds" id="rounds">
+    <option value="3">3</option>
+    <option value="5">5</option>
+    <option value="8">8</option>
+    <option value="10">10</option>
+</select>
+<br>
+<label for="lang">Choose a language:</label>
+<select name="lang" id="lang">
+    <option value="en">English</option>
+    <option value="bg">Bulgarian</option>
+</select>
+<br>
+<label for="category">Choose a category:</label>
+<select name="category" id="category">
+    <option value="animals">Animals</option>
+    <option value="objects">Objects</option>
+    <option value="general">General Words</option>
+    <option value="custom">Custom</option>
+</select>
+<br><br>
+Custom Dictionary (list all the words with ", " between them): <input id="wordsInput" size="100">
+<br><br>
+<h3>Public rooms:<br></h3>
+<table id="rooms">
+
+</table>
+
+</body>
+</html>

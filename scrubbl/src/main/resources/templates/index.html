@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+
+    <style>
+        body {font-family: Arial, Helvetica, sans-serif;}
+
+        /* The Modal (background) */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1; /* Sit on top */
+            padding-top: 100px; /* Location of the box */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgb(0,0,0); /* Fallback color */
+            background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+        }
+
+        /* Modal Content */
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 50%;
+            height: 20%;
+        }
+
+    </style>
+</head>
+
+<script type="text/javascript">
+
+
+    var canvas, ctx, flag = false,
+        prevX = 0,
+        currX = 0,
+        prevY = 0,
+        currY = 0,
+        dot_flag = false;
+
+    var lines = [];
+    var roomId = "a";
+
+    var name = "guest";
+
+    var lastId = 0;
+    var messageID = 0;
+
+    var role = "drawer";
+
+    var x = "black",
+        y = 2;
+
+    var words = [];
+
+    var wordToGuess = "";
+
+    var scoredPoint = false;
+
+    var timer = 1;
+
+    var isLastRound = false;
+
+    function init() {
+        let searchParams = new URLSearchParams(window.location.search);
+        if(searchParams.has('roomId')){
+            roomId = searchParams.get('roomId');
+        }
+
+        if(searchParams.has('name')){
+            name = searchParams.get('name');
+        }
+
+        role = getRole();
+        getTime();
+
+        document.getElementById("roomID").innerHTML = roomId;
+        canvas = document.getElementById('can');
+        ctx = canvas.getContext("2d");
+        w = canvas.width;
+        h = canvas.height;
+
+        const t = setInterval(function (){
+            if(timer === 0){
+                erase();
+                timer = 3;
+                document.getElementById("EndRoundModal").style.display = "block";
+                getStats();
+                if(isLastRound === true){
+                    timer += 1000000;
+                    document.getElementById("RoundText").innerHTML = "Game is over. This are the stats:";
+                }else {
+
+                    setTimeout(function (){location.reload();}, 3000);
+                }
+            }else if(timer === 2 && role === "drawer"){
+                timer--;
+                document.getElementById("timer").innerHTML = timer + " s";
+                save();
+            }
+            else{
+                timer--;
+                document.getElementById("timer").innerHTML = timer + " s";
+            }
+        }, 1000);
+
+        // every 100ms we send the lines that we've drawn
+
+        const chat = setInterval(getMessages, 1000);
+
+        var input = document.getElementById("message");
+
+        // Execute a function when the user releases a key on the keyboard
+        input.addEventListener("keyup", function(event) {
+            // Number 13 is the "Enter" key on the keyboard
+            if (event.keyCode === 13) {
+                // Cancel the default action, if needed
+                event.preventDefault();
+                // Trigger the button element with a click
+                document.getElementById("submit").click();
+            }
+        });
+
+        setTimeout(function() {
+            if(role === "drawer"){
+                getWords();
+                setTimeout(function() {
+                    var modal = document.getElementById("WordModal");
+
+                    modal.style.display = "block";
+                    document.getElementById("word1").value = words[0];
+                    document.getElementById("word2").value = words[1];
+                    document.getElementById("word3").value = words[2];
+
+                }, 100);
+                // Get the modal
+            }
+            var interval = null;
+            if(role === "drawer"){
+
+
+                interval = setInterval(sendLines, 100);
+                canvas.addEventListener("mousemove", function (e) {
+                    findxy('move', e)
+                }, false);
+                canvas.addEventListener("mousedown", function (e) {
+                    findxy('down', e)
+                }, false);
+                canvas.addEventListener("mouseup", function (e) {
+                    findxy('up', e)
+                }, false);
+                canvas.addEventListener("mouseout", function (e) {
+                    findxy('out', e)
+                }, false);
+                var slider = document.getElementById("Thickness");
+                slider.oninput = function() {
+                    y = this.value;
+                }
+
+
+            }else if(role === "guesser"){
+                interval = setInterval(getLines, 100);
+                var getCurrent = setInterval(getCurrentWord, 3000);
+            }
+        }, 150);
+
+
+
+    }
+
+    function color(obj) {
+        switch (obj.id) {
+            case "green":
+                x = "green";
+                break;
+            case "blue":
+                x = "blue";
+                break;
+            case "red":
+                x = "red";
+                break;
+            case "yellow":
+                x = "yellow";
+                break;
+            case "orange":
+                x = "orange";
+                break;
+            case "black":
+                x = "black";
+                break;
+            case "white":
+                x = "white";
+                break;
+        }
+        if (x == "white") y = 14;
+        else y = 2;
+
+    }
+
+    function draw() {
+        ctx.beginPath();
+        ctx.moveTo(prevX, prevY);
+        ctx.lineTo(currX, currY);
+        ctx.strokeStyle = x;
+        ctx.lineWidth = y;
+        //add the line to the array
+        if(role === "drawer"){
+            lines.push(
+                {
+                    "prevX" : prevX,
+                    "prevY" : prevY,
+                    "curX" : currX,
+                    "curY" : currY,
+                    "color" : x,
+                    "thickness" : y
+                });
+        }
+        ctx.stroke();
+        ctx.closePath();
+    }
+
+    function erase() {
+        if(role === "drawer"){
+            ctx.clearRect(0, 0, w, h);
+            //document.getElementById("canvasimg").style.display = "none";
+            fetch('http://localhost:8080/draw/clear/' + roomId, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            })
+                .then(function(response) {
+                    return response.text();
+                });
+
+        }else if(role === "guesser"){
+            ctx.clearRect(0, 0, w, h);
+        }
+    }
+
+
+    function getRole(){
+        var roleToSet = "";
+        fetch('http://localhost:8080/getRole/' + roomId + "/" + name, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'text/plain',
+            },
+        })
+            .then(function(response) {
+                response.text().then(function (text) {
+                    console.log(text);
+                    roleToSet += text;
+                });
+            });
+        setTimeout(function() {
+            role = roleToSet;
+        }, 100);
+
+
+
+    }
+
+    function getTime(){
+        //we make a get request to the server
+        fetch('http://localhost:8080/getTime/' + roomId, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then(response => response.json())
+            .then(data => {
+                timer = data;
+                console.log("time = " + data);
+            });
+    }
+
+    function getLines(){
+        //we make a get request to the server
+        fetch('http://localhost:8080/getLines/' + roomId + "/" + lastId, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then(response => response.json())
+            .then(data => {
+                // if the id is -1 that means that we have to erase everything
+                if(data[0]["id"] === -1){
+                    erase();
+                    return;
+                }
+                // the data packet is empty, we skip it
+                if(data[0]["id"] === -2){
+                    return;
+                }
+                //we fill the lines array and we change the id of the last line
+                for(let i in data)
+                    lines.push(data[i]);
+                if(lines.length > 0){
+                    lastId = lines[lines.length-1]["id"];
+                }
+
+            });
+        //we draw the lines and we clear the list
+        lines.forEach(setParameters);
+        lines = [];
+    }
+
+    function setParameters(value, index, array){
+        prevX = value["prevX"];
+        prevY = value["prevY"];
+        currX = value["curX"];
+        currY = value["curY"];
+        x = value["color"];
+        y = value["thickness"];
+        draw();
+    }
+
+
+
+    function sendLines(){
+        //check if the lines list is empty
+        if(typeof lines !== 'undefined' &&  lines.length > 0){
+            //if its not we send a post request to the server with the lines as body
+            fetch('http://localhost:8080/draw/send/' + roomId, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(lines),
+            })
+                .then(function(response) {
+                    return response.text();
+                });
+            //we clear the lines array
+            lines = [];
+        }
+    }
+
+    function findxy(res, e) {
+        if (res == 'down') {
+            prevX = currX;
+            prevY = currY;
+            currX = e.clientX - canvas.offsetLeft;
+            currY = e.clientY - canvas.offsetTop;
+
+            flag = true;
+            dot_flag = true;
+            if (dot_flag) {
+                ctx.beginPath();
+                ctx.fillStyle = x;
+                ctx.fillRect(currX, currY, 2, 2);
+                ctx.closePath();
+                dot_flag = false;
+            }
+        }
+        if (res == 'up' || res == "out") {
+            flag = false;
+        }
+        if (res == 'move') {
+            if (flag) {
+                prevX = currX;
+                prevY = currY;
+                currX = e.clientX - canvas.offsetLeft;
+                currY = e.clientY - canvas.offsetTop;
+                draw();
+            }
+        }
+    }
+
+    function sendMessage() {
+        if(scoredPoint === false){
+            var message = document.getElementById("message").value;
+
+            if(message === wordToGuess && role === "guesser"){
+                fetch('http://localhost:8080/WordGuessed/' + roomId + "/" + name, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: wordToGuess,
+                })
+                    .then(function(response) {
+                        scoredPoint = true;
+                        return response.text();
+                    });
+            }
+
+            fetch('http://localhost:8080/sendMessage/' + roomId, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({"sender" : name, "message": message}),
+            })
+                .then(function(response) {
+                    document.getElementById("message").value = "";
+                    return response.text();
+                });
+        }
+    }
+
+    function getMessages(){
+        var content = "";
+        fetch('http://localhost:8080/getMessages/' + roomId + "/" + messageID, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then(response => response.json())
+            .then(data => {
+                for(var ms in data){
+                    var row = document.getElementById("chat").insertRow();
+                    var cell1 = row.insertCell(0);
+                    var cell2 = row.insertCell(1);
+                    cell1.innerHTML = data[ms]["sender"] + ": ";
+                    cell2.innerHTML = data[ms]["text"];
+                    messageID++;
+                }
+            });
+
+    }
+
+    function getWords() {
+        fetch('http://localhost:8080/getWords/' + roomId, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then(response => response.json())
+            .then(data => {
+                if(data[3] === "true"){
+                    isLastRound = true;
+                }
+                words = data;
+            });
+    }
+
+    function getCurrentWord(){
+        fetch('http://localhost:8080/getCurrentWord/' + roomId, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then(response => response.json())
+            .then(data => {
+                wordToGuess = data[0];
+                if(data[1] === "true"){
+                    isLastRound = true;
+                }
+                console.log(wordToGuess);
+            });
+    }
+
+    function word_click(number){
+        var modal = document.getElementById("WordModal");
+        modal.style.display = "none";
+        wordToGuess = words[number];
+        fetch('http://localhost:8080/sendWord/' + roomId, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: wordToGuess,
+        })
+            .then(function(response) {
+                return response.text();
+            });
+        console.log(wordToGuess);
+    }
+
+
+    function getStats(){
+        fetch('http://localhost:8080/getStats/' + roomId, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then(response => response.json())
+            .then(data => {
+                for(var ms in data){
+                    var row = document.getElementById("stats").insertRow();
+                    var cell1 = row.insertCell(0);
+                    var cell2 = row.insertCell(1);
+                    cell1.innerHTML = ms + ": ";
+                    cell2.innerHTML = data[ms];
+                }
+                console.log(data);
+            });
+    }
+
+    function save(){
+        var dataURL = canvas.toDataURL();
+        fetch('http://localhost:8080/saveDrawing/' + roomId, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: dataURL,
+        })
+            .then(function(response) {
+                return response.text();
+            });
+    }
+
+
+</script>
+<body onload="init()">
+
+<!-- The Modal for word choosing -->
+<div id="WordModal" class="modal">
+    <!-- Modal content -->
+    <div class="modal-content">
+        <input type="button" value="word1" id="word1" onclick="word_click(0)" style="position:absolute;width:150px;height:50px;top:20%;left:30%;">
+        <input type="button" value="word2" id="word2" onclick="word_click(1)" style="position:absolute;width:150px;height:50px;top:20%;left:45%;">
+        <input type="button" value="word3" id="word3" onclick="word_click(2)" style="position:absolute;width:150px;height:50px;top:20%;left:60%;">
+    </div>
+
+</div>
+
+<div id="EndRoundModal" class="modal">
+    <!-- Modal content -->
+    <div class="modal-content">
+        <h4 id="RoundText">RoundEnded</h4>
+        <table id="stats">
+
+        </table>
+    </div>
+
+</div>
+
+<div style="float:left;">
+    <p id="timer"></p>
+    <div><p id="roomID"></p></div>
+    <canvas id="can" width="400" height="400" style="position:absolute;top:15%;border:2px solid;"></canvas>
+    <div style="position:absolute;top:15%;left:35%;width:10px;height:10px;background:green;" id="green" onclick="color(this)"></div>
+    <div style="position:absolute;top:15%;left:37%;width:10px;height:10px;background:blue;" id="blue" onclick="color(this)"></div>
+    <div style="position:absolute;top:15%;left:39%;width:10px;height:10px;background:red;" id="red" onclick="color(this)"></div>
+    <div style="position:absolute;top:18%;left:35%;width:10px;height:10px;background:yellow;" id="yellow" onclick="color(this)"></div>
+    <div style="position:absolute;top:18%;left:37%;width:10px;height:10px;background:orange;" id="orange" onclick="color(this)"></div>
+    <div style="position:absolute;top:18%;left:39%;width:10px;height:10px;background:black;" id="black" onclick="color(this)"></div>
+    <div style="position:absolute;top:25%;left:35%;">Eraser</div>
+    <div style="position:absolute;top:30%;left:35%;width:15px;height:15px;background:white;border:2px solid;" id="white" onclick="color(this)"></div>
+    <input type="range" min="1" max="20" value="2" class="slider" id="Thickness" style="position:absolute;top:35%;left:35%;">
+    <!--<img id="canvasimg" style="position:absolute;top:10%;left:52%;" style="display:none;">-->
+    <input type="button" value="clear" id="clr" size="23" onclick="erase()" style="position:absolute;top:40%;left:45%;">
+</div>
+<div style="float:left;">
+    <div style="position:absolute;left:60%;">Chat</div>
+    <table id="chat" style="position:absolute;left:60%;top:10%;border:2px solid;">
+
+    </table>
+
+    <p style="position:absolute;left:60%;top:50%;"><input id="message" type="text" /></p>
+    <p style="position:absolute;left:60%;top:60%;"><input id="submit" onclick="sendMessage()" type="submit" value="Submit" />
+    </p>
+</div>
+
+</body>
+</html>

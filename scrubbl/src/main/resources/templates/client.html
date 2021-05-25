@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+
+<script type="text/javascript" >
+    var canvas, ctx, flag = false,
+        prevX = 0,
+        currX = 0,
+        prevY = 0,
+        currY = 0,
+        dot_flag = false;
+
+    var lines = [];
+    var roomId = 'a';
+    var lastId = 0;
+    var messageID = 0;
+
+    var name = "guest";
+
+    var x = "black",
+        y = 2;
+
+    function init() {
+        let searchParams = new URLSearchParams(window.location.search);
+        if(searchParams.has('roomId')){
+            roomId = searchParams.get('roomId');
+        }
+
+        if(searchParams.has('name')){
+            name = searchParams.get('name');
+        }
+            console.log(name);
+
+        canvas = document.getElementById('can');
+        ctx = canvas.getContext("2d");
+        w = canvas.width;
+        h = canvas.height;
+        //Every 100ms we get the lines from the server with the id of the last line
+        const interval = setInterval(getLines, 100);
+
+        const chat = setInterval(getMessages, 1000);
+    }
+
+    function getLines(){
+        //we make a get request to the server
+        fetch('http://localhost:8080/getLines/' + roomId + "/" + lastId, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then(response => response.json())
+            .then(data => {
+                // if the id is -1 that means that we have to erase everything
+                if(data[0]["id"] === -1){
+                    erase();
+                    return;
+                }
+                // the data packet is empty, we skip it
+                if(data[0]["id"] === -2){
+                    return;
+                }
+                //we fill the lines array and we change the id of the last line
+                for(let i in data)
+                    lines.push(data[i]);
+                if(lines.length > 0){
+                    lastId = lines[lines.length-1]["id"];
+                }
+
+            });
+        //we draw the lines and we clear the list
+        lines.forEach(setParameters);
+        lines = [];
+    }
+
+    function setParameters(value, index, array){
+        prevX = value["prevX"];
+        prevY = value["prevY"];
+        currX = value["curX"];
+        currY = value["curY"];
+        x = value["color"];
+        y = value["thickness"];
+        draw();
+    }
+
+    function draw() {
+        ctx.beginPath();
+        ctx.moveTo(prevX, prevY);
+        ctx.lineTo(currX, currY);
+        ctx.strokeStyle = x;
+        ctx.lineWidth = y;
+        ctx.stroke();
+        ctx.closePath();
+    }
+
+
+    function erase() {
+        ctx.clearRect(0, 0, w, h);
+        //document.getElementById("canvasimg").style.display = "none";
+    }
+
+    function save() {
+        document.getElementById("canvasimg").style.border = "2px solid";
+        var dataURL = canvas.toDataURL();
+        document.getElementById("canvasimg").src = dataURL;
+        document.getElementById("canvasimg").style.display = "inline";
+    }
+
+    function sendMessage() {
+        var message = document.getElementById("message").value;
+        fetch('http://localhost:8080/sendMessage/' + roomId, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({"sender" : name, "message": message}),
+        })
+            .then(function(response) {
+                return response.text();
+            });
+    }
+
+    function getMessages(){
+        var content = "";
+        fetch('http://localhost:8080/getMessages/' + roomId + "/" + messageID, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then(response => response.json())
+            .then(data => {
+                for(var ms in data){
+                    var row = document.getElementById("chat").insertRow();
+                    var cell1 = row.insertCell(0);
+                    var cell2 = row.insertCell(1);
+                    cell1.innerHTML = data[ms]["sender"] + ": ";
+                    cell2.innerHTML = data[ms]["text"];
+                    messageID++;
+                }
+
+            });
+
+    }
+
+</script>
+<body onload="init()">
+<canvas id="can" width="400" height="400" style="position:absolute;top:10%;border:2px solid;"></canvas>
+<div style="float:left;">
+    <div style="position:absolute;left:60%;">Chat</div>
+    <table id="chat" style="position:absolute;left:60%;top:10%;border:2px solid;">
+
+    </table>
+
+        <p style="position:absolute;left:60%;top:50%;"><input id="message" type="text" /></p>
+        <p style="position:absolute;left:60%;top:60%;"><input onclick="sendMessage()" type="submit" value="Submit" />
+        </p>
+</div>
+</body>
+</html>
